@@ -1,0 +1,1 @@
+pip3 install --user git+https://github.com/contactless/bitrix24-python-sdk

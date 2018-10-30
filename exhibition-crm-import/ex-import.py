@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import argparse
 import pprint
 from bitrix24 import bitrix24
 from config import *
@@ -58,7 +59,7 @@ def _add_if_new_and_not_empty(existing, fields, field_name, value):
     if value:
         fields[field_name] = value
 
-def process_row(row):
+def process_row(row, group_id=None):
 
     if row['Email']:
         emails = [e.strip() for e in row['Email'].split(',')]
@@ -166,13 +167,19 @@ def process_row(row):
         if row['Компания - назв']:
             person_desc += " (%s)" % row['Компания - назв']
 
+
+        task_data = {
+            'TITLE': 'Cвязаться с %s по результатам %s' % (person_desc, row['Название выставки']),
+            'DESCRIPTION': task_desc,
+            'RESPONSIBLE_ID': exh_user_id,
+            'UF_CRM_TASK' :  {0: 'C_%s' % contact_id},
+        }
+
+        if group_id is not None:
+            task_data['GROUP_ID'] = group_id
+
         result = bx24.call('task.item.add', {
-            'arNewTaskData' : {
-                    'TITLE': 'Cвязаться с %s по результатам %s' % (person_desc, row['Название выставки']),
-                    'DESCRIPTION': task_desc,
-                    'RESPONSIBLE_ID': exh_user_id,
-                    'UF_CRM_TASK' :  {0: 'C_%s' % contact_id},
-                }
+            'arNewTaskData' : task_data
             })
         pprint.pprint(result)
 
@@ -180,38 +187,46 @@ def process_row(row):
 
 
 import csv, sys
-# contact = find_existing_contact(['eugenyboger@gmail.com'],[])    
-# pprint.pprint(contact)
-# sys.exit(1)
 
 import logging
 
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='MQTT retained message deleter', add_help=False)
+
+    parser.add_argument('-g', '--group', dest='group', type=int,
+                        help='Bitrix group to assign tasks to', default=None)
+
+    parser.add_argument('filename',  type=str,
+                        help='CSV filename')
+
+    args = parser.parse_args()
 
 
-with open(sys.argv[1]) as csvfile:
-    with open(sys.argv[1] + ".err", 'wt') as csvfile_err:
-        csvfile.readline()
-        csvfile.readline()
-        reader = csv.DictReader(csvfile)
 
-        csvfile_err.write("skip this\n")
-        csvfile_err.write("skip this too\n")
-        print (reader._fieldnames)
-        header_written = False
+    with open(args.filename) as csvfile:
+        with open(args.filename + ".err", 'wt') as csvfile_err:
+            csvfile.readline()
+            csvfile.readline()
+            reader = csv.DictReader(csvfile)
 
-        for row in reader:
-            if not header_written:
-                writer = csv.DictWriter(csvfile_err, fieldnames = reader._fieldnames)
-                writer.writeheader()
-                header_written = True
+            csvfile_err.write("skip this\n")
+            csvfile_err.write("skip this too\n")
+            print (reader._fieldnames)
+            header_written = False
 
-            print("Will process row: ", row)
-            try:
-                process_row(row)
-            except:
-                logging.error("error while processing row %s" % row)
+            for row in reader:
+                if not header_written:
+                    writer = csv.DictWriter(csvfile_err, fieldnames = reader._fieldnames)
+                    writer.writeheader()
+                    header_written = True
 
-                writer.writerow(row)
+                print("Will process row: ", row)
+                try:
+                    process_row(row, group_id=args.group)
+                except:
+                    logging.exception("error while processing row %s" % row)
+
+                    writer.writerow(row)
 
 
 
